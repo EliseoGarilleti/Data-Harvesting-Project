@@ -1,0 +1,77 @@
+---
+title: "Untitled"
+author: "Eliseo Garilleti"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r}
+library(xml2)
+library(tidyverse)
+library(rvest)
+```
+
+
+
+```{r}
+editoriales_larazon <- "https://www.larazon.es/editoriales/"
+editoriales_larazonII <- "https://www.larazon.es/editoriales/2/"
+editoriales_larazon <- read_html(editoriales_larazon)
+editoriales_larazonII <- read_html(editoriales_larazonII)
+
+links_larazon <- editoriales_larazon %>% 
+  xml_find_all("//article//h2//a") %>% 
+  xml_attr("href")
+
+links_larazonII <- editoriales_larazonII %>% 
+  xml_find_all("//article//h2//a") %>% 
+  xml_attr("href")
+
+links_larazon <- c(links_larazon, links_larazonII)
+
+get_editorial_text <- function(url){	
+  url %>%	
+    read_html() %>% 	
+    html_nodes(xpath = "//section//div[@class='article-main__content']") %>% 	
+    html_text() %>% 	
+    str_replace_all("[\r\n]" , "")  	
+}	
+
+text_larazon <- sapply(links_larazon,get_editorial_text)	
+text_larazon_df <- as_tibble(text_larazon)
+
+
+text_larazon_df <- text_larazon_df %>% 
+  mutate(Newspaper = "La Razon")
+```
+
+
+```{r}
+editoriales_elpais <- "https://elpais.com/opinion/editoriales/"
+editoriales_elpais <- read_html(editoriales_elpais)
+
+links_elpais <- editoriales_elpais %>% 
+  xml_find_all("//article//h2//a") %>% 
+  xml_attr("href") 
+
+get_editorial_text <- function(url){	
+  url %>%	
+    read_html() %>% 	
+    html_nodes(xpath = "//article//div[@class='a_c clearfix']") %>% 	
+    html_text() %>% 	
+    str_replace_all("[\r\n]" , "")  	
+}	
+
+text_elpais <- sapply(links_elpais,get_editorial_text)	
+text_elpais_df <- as_tibble(text_elpais)
+
+text_elpais_df <- text_elpais_df %>% 
+  mutate(Newspaper = "El País")
+```
+
+We create a data frame with a column that contains the text of each article and a column that specifies the newspaper where it came from
+```{r}
+text_editoriales_df <- full_join(text_elpais_df, text_larazon_df)
+```
+
+Text mining stuff...
