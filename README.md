@@ -4,6 +4,6 @@ Our project consists of extracting the text of editorials from different Spanish
 
 Once this database is created, we can carry out Text Mining techniques in order to observe differences and similarities in the tone and content of these editorials. Using (and extending) this database, we could, for example, observe and analyse how different media talk about the government, from which perspectives they approach the same events, etc.
 
-As you can see, our exercise basically consists of two parts: first, we extract all the links to the page where the editorials are found. Then, we create a function (which we adapt according to the page we are scraping) to extract the text from these links. Once the text has been extracted, we convert the vector containing them into a data frame and create a column that specifies the medium to which they belong.
+As you can see, our exercise basically consists of two parts: first, we extract all the links to the page where the editorials are found. Then, we create a function (which we adapt according to the page we are scraping) to extract the text from these links. Once the text has been extracted, we convert the vector containing them into a data frame and create a column that specifies the newspaper to which they belong.
 
 
