@@ -1,0 +1,218 @@
+---
+title: "Scraping news articles to perform text mining techniques"
+author: "Eliseo Garilleti and Nicola Ricciardi"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r}
+library(xml2)
+library(tidyverse)
+library(rvest)
+```
+
+
+The aim of this exercise is to develop a webscraping tool that allows us to obtain the texts of different links. Given our academic background, we thought it would be interesting to focus the exercise on obtaining the content of articles from different Spanish newspapers. Using our tool, we simultaneously extracted the text of all the editorials from the editorial section of El País and La Razón. 
+
+Our initial intention was to extend the exercise to a wider sample of media, in order to create a database that would include a column with the editorials and another with the name of the media to which they belong. We thought it might be interesting to create a database of this type in order, for example, to analyse how the main Spanish media describe and assess the political situation or government action; the subjects they deal with; the sentiment of their texts when dealing with certain issues... However, the big problem we have encountered in this respect has been the paywalls. When we tried to download the text from media such as El Mundo, we could only extract the fragment of the article visible to those of us who are not subscribers. Therefore, we finally decided to work only with two media: one conservative (La Razón) and one progressive (El País).
+
+Our exercise consists of obtaining all the links that contain the editorials in order to, later, obtain simultaneously the text of all the editorials through a function that we have built.
+
+```{r}
+# First, we create an object containing the URL of the page containing the articles. 
+editoriales_elpais <- "https://elpais.com/opinion/editoriales/"
+# We use the read_html function to get the content of this web page.
+editoriales_elpais <- read_html(editoriales_elpais)
+
+links_elpais <- editoriales_elpais %>% 
+  # We use the "xml_find_all" functions to locate the urls in which the editorials are located...
+  xml_find_all("//article//h2//a") %>% 
+  # ... and the function "xml_attr" to get the links, contained in the "href" attribute, inside the "a" node.
+  xml_attr("href") 
+
+# We use the following function to get the text of all editorials simultaneously.
+get_editorial_text <- function(url){	
+    # We use the "url" function to open a connection to our urls.
+  url %>%	
+    # We use the read_html function to get the content of these web pages.
+    read_html() %>% 	
+    # With the function "html_nodes" we access the node containing the body of the article.
+    html_nodes(xpath = "//article//div[@class='a_c clearfix']") %>% 	
+    # We use the function html_text to extract the text
+    html_text() %>% 	
+    # We use str_replace_all to remove characters that do not give any information
+    str_replace_all("[\n]" , "")  	
+}	
+
+# We apply the function and repeat for each link containing an editorial.
+text_elpais <- sapply(links_elpais,get_editorial_text)	
+# We create a dataframe and include a variable that specifies the newspaper to which the editorials belong.
+text_elpais_df <- as_tibble(text_elpais) %>% 
+  mutate(Newspaper = "El País")
+
+```
+
+```{r}
+
+editoriales_larazon <- "https://www.larazon.es/editoriales/"
+# We do this twice for La Razón, so that our final database is more balanced in terms of the number of articles it contains from each newspaper. 
+editoriales_larazonII <- "https://www.larazon.es/editoriales/2/"
+
+editoriales_larazon <- read_html(editoriales_larazon)
+editoriales_larazonII <- read_html(editoriales_larazonII)
+
+links_larazon <- editoriales_larazon %>% 
+  xml_find_all("//article//h2//a") %>% 
+  xml_attr("href")
+
+links_larazonII <- editoriales_larazonII %>% 
+  xml_find_all("//article//h2//a") %>% 
+  xml_attr("href")
+
+# Once the links have been obtained, we create a single vector containing all the links to pages 1 and 2 of La Razón editorials. This is useful, because it allows us to apply the function we are going to create to a single object, and obtain all the links simultaneously.
+links_larazon <- c(links_larazon, links_larazonII)
+
+
+get_editorial_text <- function(url){	
+  url %>%
+    read_html() %>% 	
+    html_nodes(xpath = "//section//div[@class='article-main__content']") %>% 	
+    html_text() %>% 
+    str_replace_all("[\n]" , "")  	
+}	
+
+text_larazon <- sapply(links_larazon,get_editorial_text)	
+
+text_larazon_df <- as_tibble(text_larazon) %>% 
+  mutate(Newspaper = "La Razon")
+
+```
+
+
+We create a data frame with a column that contains the text of each article and a column that specifies the newspaper where it came from
+```{r}
+text_editoriales_df <- full_join(text_elpais_df, text_larazon_df)
+```
+
+
+## Filtering stopwords
+
+Stopwords are words that are not useful for analysis, typically extremely common words in language such as "the", "of", "to", and so forth in English. To filter them, we need to start from a list. Fortunately, we have a function `stopwords` where we can select the language and the source of words we want to consider.
+
+So now, let's remove stopwords from the newspapers with [`anti_join()`](https://dplyr.tidyverse.org/reference/filter-joins.html).
+
+Anti_join is a function that proves useful when we find ourselves wanting to identify the records from one table that do NOT match another table.
+
+In this case, for our dataframe of newspapers, we only want words that are not in the stopwords list.
+
+```{r}
+#install.packages("stopwords")
+library(dplyr)
+library(stopwords)
+library(tidytext)
+stp2 <- stopwords("es", source = "stopwords-iso")
+stp2 <- as.tibble(stp2)
+stp2 <- stp2%>%
+  rename(word = value)
+
+xx <- text_editoriales_df%>%
+unnest_tokens(word, value, strip_punct = TRUE, to_lower = TRUE)%>%
+  anti_join(stp2)
+```
+
+## Counting word frequencies
+
+We want to know how many times a word is mentioned in the artiicles we have just selected, so we use the function `count`. It is possible to observe that the words *gobierno* and *reforma* appear more time than the others. This might change depending on the day you apply this analysis because the text we extract varies from day to day.
+
+```{r}
+library(ggplot2)
+
+xx %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 20)%>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+```
+
+In this part we compute the proportion for the words we consider. The highest proportion is represented by the word *gobierno*.
+
+```{r}
+prop_1 <- xx%>%
+  count(word, sort = TRUE)%>%
+  mutate(proportion = n / sum(n))
+```
+
+```{r}
+xx <- xx%>%
+  count(word, sort = TRUE)%>%
+  left_join(get_sentiments("bing"),by="word")%>%
+  drop_na(sentiment)
+```
+
+## Sentiment distribution in newspapers
+
+We can also examine how sentiment changes throughout each novel. First, we divide text in chunks and find a sentiment score for each one of them using the Bing lexicon and [`left_join()`](https://dplyr.tidyverse.org/reference/mutate-joins.html).
+
+```{r}
+xx%>%
+  count(word, sort = TRUE)%>%
+  left_join(get_sentiments("bing"),by="word")%>%
+  drop_na(sentiment)%>%
+  count(sentiment)%>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  #we extract net sentiment by substraction
+  mutate(sentiment = negative - positive)
+
+summary(as.factor(xx$sentiment))
+
+```
+
+We've got everything we need to create plots of sentiment by newspapers. We can plot these sentiment scores across the plot trajectory of each newspaper.
+
+```{r}
+xx %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 15) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+Here, I create a dataset with three columns, one for the word, one for the number each word appear and one to indicate the newspaper where the word appear.
+
+```{r}
+xx <- text_editoriales_df%>%
+unnest_tokens(word, value, strip_punct = TRUE, to_lower = TRUE)%>%
+  filter(Newspaper == "El País")%>%
+  count(word, sort = TRUE)%>%
+  anti_join(stp2)%>%
+  mutate(Newspaper = "El País")
+
+xx_1 <- text_editoriales_df%>%
+unnest_tokens(word, value, strip_punct = TRUE, to_lower = TRUE)%>%
+  filter(Newspaper == "La Razon")%>%
+  count(word, sort = TRUE)%>%
+  anti_join(stp2)%>%
+  mutate(Newspaper = "La Razon")
+
+xx_complete <- bind_rows(xx, xx_1)
+
+```
+
+Here, we count the total number for the Newspaper that we take into account. We group by Newspaper to sum all the n and then we create a column called total with the total of words by newspaper.
+
+```{r}
+xx_total <- xx_complete %>% 
+  group_by(Newspaper) %>% 
+  summarize(total = sum(n))
+```
+
+
